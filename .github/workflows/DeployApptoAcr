@@ -1,0 +1,58 @@
+name: Deploy to Azure Container Registry
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+  workflow_dispatch:
+
+env:
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  IMAGE_NAME: chat-app
+  
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Log in to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_NAME }}.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      
+      - name: Create .env file from secret
+        working-directory: ./src
+        run: |
+          echo "${{ secrets.ENV }}" > .env
+          echo "✅ .env file created (not committed to repo)"
+      
+      - name: Build Docker image
+        working-directory: ./src
+        run: |
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker tag ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+      
+      - name: Push Docker image to ACR
+        run: |
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+      
+      - name: Clean up .env file
+        if: always()
+        working-directory: ./src
+        run: |
+          rm -f .env
+          echo "🧹 Cleaned up .env file"
+      
+      - name: Output image details
+        run: |
+          echo "✅ Image pushed successfully!"
+          echo "📦 Image: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest"
+          echo "🏷️ Tag: ${{ github.sha }}"
